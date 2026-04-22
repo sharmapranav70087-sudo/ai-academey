@@ -5,140 +5,124 @@ import Content from "../models/Content.js";
 import { env } from "../config/env.js";
 
 const WHAPI_URL = process.env.WHAPI_URL || "https://gate.whapi.cloud/messages/text";
-const WHAPI_TOKEN =env.WHAPI_TOKEN;
-
+const WHAPI_TOKEN = env.WHAPI_TOKEN;
 const PRICING_URL = "http://localhost:5173/pricing";
 
-const normalizeText = (value = "") => String(value).toLowerCase().trim().replace(/\s+/g, " ");
+/**
+ * UTILS & NORMALIZATION
+ */
+const normalizeText = (value = "") => String(value).toLowerCase().trim();
 
 export const formatNumber = (from = "") => {
-  const base = String(from).split("@")[0];
-  const digits = base.replace(/\D/g, "");
-  return digits || base;
+  return from.split("@")[0].replace(/\D/g, "");
 };
 
-const isModulesIntent = (text) =>
-  /\b(modules|show modules|list modules|all modules)\b/i.test(text);
-
-const isPriceIntent = (text) => /\b(price|cost|pricing)\b/i.test(text);
-
-const getRequestedModuleNumber = (text) => {
-  const match = text.match(/\b(?:open\s+)?module\s+(\d+)\b/i);
-  return match ? Number(match[1]) : null;
+/**
+ * INTENT DETECTION (The "Intelligence" Layer)
+ */
+const intents = {
+  isGreeting: (text) => /^(ai-academy|hello|hi|start|hey)$/i.test(text),
+  isModules: (text) => /\b(modules|lessons|courses|study|list|show)\b/i.test(text),
+  isPrice: (text) => /\b(price|cost|buy|pay|pricing|subscription)\b/i.test(text),
+  isHelp: (text) => /\b(help|support|what can you do|menu)\b/i.test(text),
+  // Extracts standalone numbers or "module 5"
+  getModuleChoice: (text) => {
+    const match = text.match(/\b(?:module\s+)?(\d+)\b/i);
+    return match ? Number(match[1]) : null;
+  }
 };
 
+/**
+ * DATABASE LOGIC
+ */
 const findOrCreateUserByPhone = async (phoneNumber) => {
   if (!phoneNumber) return null;
+  let user = await User.findOne({ phoneNumber });
+  if (!user) {
+    user = await User.create({ phoneNumber, role: "USER", lastInteraction: new Date() });
+  }
+  return user;
+};
 
-  let user = await User.findOne({
-    $or: [{ phoneNumber }, { phoneNumber: `+${phoneNumber}` }]
-  });
+/**
+ * REPLY BUILDERS
+ */
+const getModulesList = async () => {
+  const modules = await Module.find().sort({ createdAt: 1 });
+  if (!modules.length) return "📚 Our curriculum is being updated. Check back soon!";
 
-  if (user) return user;
+  const list = modules.map((m, i) => `${i + 1}️⃣ *${m.title}* ${m.isFree ? "✅ (Free)" : "🔒 (Premium)"}`).join("\n");
+  return `*Available Modules:*\n\n${list}\n\n_Reply with the number (e.g., "1") to open a module._`;
+};
 
+const getModuleContent = async (user, index) => {
+  const modules = await Module.find().sort({ createdAt: 1 });
+  const target = modules[index - 1];
+
+  if (!target) return "❌ I couldn't find that module. Type *modules* to see the list.";
+
+  if (!target.isFree && !user.hasPaid) {
+    return `🔐 *${target.title}* is a Premium module.\n\nTo unlock our full catalog, visit:\n${PRICING_URL}`;
+  }
+
+  const contents = await Content.find({ moduleId: target._id }).sort({ createdAt: 1 });
+  if (!contents.length) return `📂 *${target.title}* is currently empty.`;
+
+  const items = contents.map((c, i) => `${i + 1}. ${c.title} [${c.type}]`).join("\n");
+  return `📖 *${target.title}*\n\nContents:\n${items}\n\n_Enjoy your learning!_`;
+};
+
+/**
+ * CORE LOGIC
+ */
+const detectReply = async (text, user) => {
+  // 1. Mandatory Entry Point
+  if (intents.isGreeting(text)) {
+    return "Thank you for reaching out to the AI Academy! 🚀\n\nHow can I help you today?\n\n🔹 View *Modules*\n🔹 Check *Pricing*\n🔹 Get *Help*";
+  }
+
+  // 2. Module Navigation
+  if (intents.isModules(text)) {
+    return await getModulesList();
+  }
+
+  // 3. Pricing
+  if (intents.isPrice(text)) {
+    return `💰 *Pricing Information*\n\nWe offer a mix of free and premium AI content. You can upgrade your account here: ${PRICING_URL}`;
+  }
+
+  // 4. Contextual Selection (The "Smarter" bit)
+  const choice = intents.getModuleChoice(text);
+  if (choice) {
+    return await getModuleContent(user, choice);
+  }
+
+  // 5. Fallback
+  return "🤔 I didn't quite get that. \n\nType *modules* to see courses or *price* for info.";
+};
+
+/**
+ * WHATSAPP DISPATCHER
+ */
+const sendWhatsAppText = async (to, body) => {
+  if (!WHAPI_TOKEN) return console.error("Missing WHAPI_TOKEN");
   try {
-    user = await User.create({ phoneNumber, role: "USER" });
-    return user;
-  } catch {
-    return User.findOne({
-      $or: [{ phoneNumber }, { phoneNumber: `+${phoneNumber}` }]
+    await axios.post(WHAPI_URL, { to, body }, {
+      headers: { Authorization: `Bearer ${WHAPI_TOKEN}` }
     });
+  } catch (err) {
+    console.error("Whapi Error:", err.response?.data || err.message);
   }
-};
-
-const getAllModulesOrdered = async () => {
-  return Module.find().sort({ createdAt: 1 }).select("title isFree");
-};
-
-const buildModulesListReply = async () => {
-  const modules = await getAllModulesOrdered();
-  if (!modules.length) return "No modules are available right now.";
-
-  const lines = modules.map(
-    (m, idx) => `${idx + 1}. ${m.title} (${m.isFree ? "Free" : "Paid"})`
-  );
-  return `Modules:\n${lines.join("\n")}`;
-};
-
-const buildPriceReply = async () => {
-  const paidCount = await Module.countDocuments({ isFree: false });
-  if (!paidCount) return "All modules are currently free.";
-  return `Paid modules require purchase.\nVisit: ${PRICING_URL}`;
-};
-
-const buildModuleAccessReply = async ({ user, moduleNumber }) => {
-  const modules = await getAllModulesOrdered();
-
-  if (!modules.length) return "No modules are available right now.";
-  if (!moduleNumber || moduleNumber < 1 || moduleNumber > modules.length) {
-    return `Invalid module number. Send "modules" to view available modules.`;
-  }
-
-  const targetModule = modules[moduleNumber - 1];
-  const hasAccess = targetModule.isFree || Boolean(user?.hasPaid);
-
-  if (!hasAccess) {
-    return `Please purchase access here: ${PRICING_URL}`;
-  }
-
-  const contentList = await Content.find({ moduleId: targetModule._id })
-    .sort({ createdAt: 1 })
-    .select("title type");
-
-  if (!contentList.length) {
-    return `Module ${moduleNumber}: ${targetModule.title}\nNo content uploaded yet.`;
-  }
-
-  const lines = contentList.map((c, idx) => `${idx + 1}. ${c.title} [${c.type}]`);
-  return `Module ${moduleNumber}: ${targetModule.title}\nContent:\n${lines.join("\n")}`;
-};
-
-const detectReply = async ({ message, user }) => {
-  const text = normalizeText(message);
-
-  if (!text) return "I can help with courses, modules, and pricing.";
-  if (text.includes("ai-academy")) return "Welcome to AI Academy 🚀 How can I help you?";
-
-  if (isModulesIntent(text)) return buildModulesListReply();
-  if (isPriceIntent(text)) return buildPriceReply();
-
-  const moduleNumber = getRequestedModuleNumber(text);
-  if (moduleNumber) {
-    return buildModuleAccessReply({ user, moduleNumber });
-  }
-
-  return "I can help with courses, modules, and pricing.";
-};
-
-const sendWhatsAppText = async ({ to, body }) => {
-  if (!WHAPI_TOKEN) return;
-  await axios.post(
-    WHAPI_URL,
-    { to, body },
-    {
-      headers: {
-        Authorization: `Bearer ${WHAPI_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      timeout: 15000
-    }
-  );
 };
 
 export const processMessage = async ({ message, from }) => {
   try {
-    if (!message || !from) return;
-
     const phoneNumber = formatNumber(from);
     const user = await findOrCreateUserByPhone(phoneNumber);
-    const reply = await detectReply({ message, user });
+    const reply = await detectReply(normalizeText(message), user);
 
-    await sendWhatsAppText({ to: from, body: reply });
+    await sendWhatsAppText(from, reply);
   } catch (error) {
-    await sendWhatsAppText({
-      to: from,
-      body: "Something went wrong. Please try again."
-    }).catch(() => {});
-    console.error("processMessage error:", error?.message || error);
+    console.error("Critical System Error:", error);
   }
 };
