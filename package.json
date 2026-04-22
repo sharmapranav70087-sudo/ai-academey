@@ -18,6 +18,11 @@
   },
   "homepage": "https://github.com/PranavX500/ai-academy#readme",
   "dependencies": {
-    "serverless-http": "^4.0.0"
-  }
+  "express": "...",
+  "mongoose": "...",
+  "cors": "...",
+  "cookie-parser": "...",
+  "dotenv": "...",
+  "serverless-http": "..."
+}
 }
