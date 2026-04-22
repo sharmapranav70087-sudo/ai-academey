@@ -1,10 +1,17 @@
 import serverless from "serverless-http";
-import dotenv from "dotenv";
 import app from "../backend/src/app.js";
 import { connectDB } from "../backend/src/config/db.js";
 
-dotenv.config();
+let isConnected = false;
 
-await connectDB();
+async function connect() {
+  if (isConnected) return;
 
-export default serverless(app);
+  await connectDB();
+  isConnected = true;
+}
+
+export default async function handler(req, res) {
+  await connect();
+  return serverless(app)(req, res);
+}
