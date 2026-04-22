@@ -12,20 +12,18 @@ const app = express();
 
 app.use(cors({
   origin: [
-  "http://localhost:3000",
-  "https://your-frontend-domain.vercel.app"
-],
+    "http://localhost:3000",
+    "https://your-frontend-domain.vercel.app"
+  ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// --- MOVE THIS UP ---
-app.use(cookieParser()); 
-// --------------------
+app.options("*", cors());
 
+app.use(cookieParser());
 app.use(express.json());
-
 // ✅ Auth routes
 app.use("/api/auth", authRoutes);
 
