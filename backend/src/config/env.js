@@ -3,7 +3,7 @@ export const env = {
 
   MONGODB_URI: process.env.MONGODB_URI,
 
-  JWT_SECRET:  process.env.JWT_SECRET || "dev_secret_change_me",
+  JWT_SECRET:  process.env.JWT_SECRET 
 
   WHAPI_TOKEN: process.env.WHAPI_TOKEN,
   WHAPI_URL: process.env.WHAPI_URL,
