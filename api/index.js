@@ -1,17 +1,16 @@
 import serverless from "serverless-http";
-import app from "../backend/src/app.js";
-import { connectDB } from "../backend/src/config/db.js";
 
-let isConnected = false;
+let handler;
 
-async function connect() {
-  if (isConnected) return;
+export default async function (req, res) {
+  if (!handler) {
+    const { default: app } = await import("../backend/src/app.js");
+    const { connectDB } = await import("../backend/src/config/db.js");
 
-  await connectDB();
-  isConnected = true;
-}
+    await connectDB();
 
-export default async function handler(req, res) {
-  await connect();
-  return serverless(app)(req, res);
+    handler = serverless(app);
+  }
+
+  return handler(req, res);
 }
