@@ -20,14 +20,12 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-app.options("*", cors(corsOptions));
-
 app.use(cookieParser());
 app.use(express.json());
 
-app.use("/api/auth", authRoutes);
-
-app.use("/api", mainRoutes);
+app.get("/", (req, res) => {
+  res.send("Backend running");
+});
 
 app.get("/api/health", (_req, res) => {
   const states = ["disconnected", "connected", "connecting", "disconnecting"];
@@ -38,5 +36,8 @@ app.get("/api/health", (_req, res) => {
     dbState: states[mongoose.connection.readyState] || "unknown"
   });
 });
+
+app.use("/api/auth", authRoutes);
+app.use("/api", mainRoutes);
 
 export default app;
