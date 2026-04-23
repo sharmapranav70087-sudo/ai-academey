@@ -3,28 +3,27 @@ import cors from "cors";
 import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 
-// Route Imports
 import authRoutes from "./routes/auth.routes.js";
 import mainRoutes from "./routes/index.js";
 
 const app = express();
 
-// 1. Permissive CORS Configuration
+// 1. UPDATED CORS CONFIGURATION
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "https://ai-academy-29p9.vercel.app",
-  "https://ai-academey-29p9.vercel.app" // Added in case of typo
+  "https://ai-academy-opal.vercel.app" // Added based on your screenshot
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl)
+    // Allow requests with no origin (like mobile apps)
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      callback(new Error("CORS Error: Origin not allowed"));
     }
   },
   credentials: true,
@@ -33,26 +32,18 @@ app.use(cors({
   optionsSuccessStatus: 200 
 }));
 
-// 2. Global Middleware
+// 2. MIDDLEWARE
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// 3. Health Check (Crucial for Railway)
-app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    status: "online",
-    dbState: mongoose.connection.readyState === 1 ? "connected" : "disconnected"
-  });
-});
-
-// 4. API Routes
+// 3. API ROUTES
 app.use("/api/auth", authRoutes);
 app.use("/api", mainRoutes);
 
-// 5. 404 Handler
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
+// Health Check
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
 });
 
 export default app;
