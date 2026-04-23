@@ -5,7 +5,7 @@ import { env } from "../config/env.js";
 
 const WHAPI_URL = process.env.WHAPI_URL || "https://gate.whapi.cloud/messages/text";
 const WHAPI_TOKEN = env.WHAPI_TOKEN;
-const PRICING_URL = "http://localhost:5173/pricing";
+const PRICING_URL = "https://ai-academy-opal.vercel.app/billing";
 
 /**
  * 1. DYNAMIC CONTENT RETRIEVAL
